@@ -92,9 +92,28 @@ class HistoryItemDecoratorTests: XCTestCase {
     XCTAssertEqual(NSImage.pixelSize(from: testImageData()), NSSize(width: 262, height: 320))
   }
 
+  func testImageDataLoaderReadsFromThrowawayContext() throws {
+    let data = testImageData()
+    let item = HistoryItem(contents: [
+      HistoryItemContent(type: NSPasteboard.PasteboardType.jpeg.rawValue, value: data)
+    ])
+    let context = Storage.shared.context
+    context.insert(item)
+    try context.save()
+    defer {
+      context.delete(item)
+      try? context.save()
+    }
+
+    XCTAssertEqual(
+      HistoryItem.imageData(for: item.persistentModelID, in: Storage.shared.container),
+      item.imageData
+    )
+  }
+
   func testCleanupImagesReleasesLowMemoryImages() async {
     Defaults[.lowMemoryImageMode] = true
-    let itemDecorator = historyItemDecorator(NSImage(named: "NSApplicationIcon")!)
+    let itemDecorator = historyItemDecorator(NSImage(named: "NSApplicationIcon")!, save: true)
     itemDecorator.ensureThumbnailImage()
     itemDecorator.ensurePreviewImage()
     let thumbnailTask = itemDecorator.thumbnailImageGenerationTask
@@ -221,7 +240,7 @@ class HistoryItemDecoratorTests: XCTestCase {
     return HistoryItemDecorator(item)
   }
 
-  private func historyItemDecorator(_ value: NSImage) -> HistoryItemDecorator {
+  private func historyItemDecorator(_ value: NSImage, save: Bool = false) -> HistoryItemDecorator {
     let contents = [
       HistoryItemContent(
         type: NSPasteboard.PasteboardType.tiff.rawValue,
@@ -236,6 +255,9 @@ class HistoryItemDecoratorTests: XCTestCase {
     item.firstCopiedAt = firstCopiedAt
     item.lastCopiedAt = lastCopiedAt
     item.numberOfCopies = 2
+    if save {
+      try? Storage.shared.context.save()
+    }
 
     return HistoryItemDecorator(item)
   }
